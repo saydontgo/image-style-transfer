@@ -1,1 +1,11 @@
+# dirs
 __pycache__/
+.vscode/
+checkpoints/
+data/
+outputs/
+# files
+.envrc
+*.pyc
+*.log
+*.pth

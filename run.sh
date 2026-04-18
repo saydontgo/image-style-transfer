@@ -1,3 +1,4 @@
+rm -rf checkpoints/
 python train.py \
   --dataset data/coco_train2014 \
   --style-image data/style_images/mosaic.jpg \

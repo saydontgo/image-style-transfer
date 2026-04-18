@@ -91,4 +91,6 @@ class TransformerNet(nn.Module):
         x = self.downsampling(x)
         x = self.residuals(x)
         x = self.upsampling(x)
-        return torch.clamp(x, 0.0, 255.0)
+        # Keep training-time gradients intact. Output range is clipped only when
+        # saving images for preview/inference.
+        return x

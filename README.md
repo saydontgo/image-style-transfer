@@ -81,9 +81,13 @@ data/
 
 说明：
 
-- 本项目的网络结构刻意做成与常见 `fast_neural_style` 权重兼容。
+- 本项目可以直接加载以下三类 Johnson 风格迁移权重：
+  - 本仓库自己训练导出的 `.pth` / `.ckpt`
+  - `pytorch/examples/fast_neural_style` 导出的 PyTorch 权重
+  - `gordicaleksa/pytorch-neural-style-transfer-johnson` 导出的 PyTorch 权重
 - 如果下载的是 `.ckpt`，也可以直接加载。
 - 如果下载的是 `ONNX` 文件，则不能直接用本项目的 PyTorch 推理脚本，需要单独写 ONNXRuntime 推理代码。
+- 如果报错里出现类似 `conv2.conv1.weight`、`upconv1.conv1.conv1.weight` 这类 key，通常说明该权重来自另一套网络实现，不是本项目支持的 Johnson `TransformerNet`。
 
 ## 5. 训练自己的模型
 

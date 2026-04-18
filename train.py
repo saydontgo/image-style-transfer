@@ -47,6 +47,11 @@ def total_variation_loss(batch: torch.Tensor) -> torch.Tensor:
     return diff_x.abs().mean() + diff_y.abs().mean()
 
 
+def ensure_finite(name: str, tensor: torch.Tensor) -> None:
+    if not torch.isfinite(tensor).all():
+        raise RuntimeError(f"Non-finite values detected in {name}. Try disabling --mixed-precision or lowering the learning rate/style weight.")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a fast neural style transfer model.")
     parser.add_argument("--dataset", type=str, required=True, help="Folder containing MS-COCO style content images.")
@@ -75,7 +80,7 @@ def parse_args() -> argparse.Namespace:
     # Hyperparameter: set to 0 if results are already clean, or raise slightly (1e-7 ~ 1e-5) to reduce noisy artifacts.
     parser.add_argument("--tv-weight", type=float, default=1e-6, help="Total variation regularization weight.")
     parser.add_argument("--num-workers", type=int, default=4, help="Dataloader workers.")
-    parser.add_argument("--log-interval", type=int, default=100, help="Steps between console logs.")
+    parser.add_argument("--log-interval", type=int, default=1000, help="Steps between console logs.")
     parser.add_argument("--checkpoint-interval", type=int, default=1000, help="Steps between checkpoint saves.")
     parser.add_argument("--mixed-precision", action="store_true", help="Enable AMP training on CUDA.")
     return parser.parse_args()
@@ -166,7 +171,7 @@ def main() -> None:
 
     style_batch = load_image_as_tensor(args.style_image, size=args.style_size).to(device)
     with torch.no_grad():
-        style_features = loss_network(normalize_batch(style_batch))
+        style_features = loss_network(normalize_batch(style_batch.float()))
         style_grams = {name: gram_matrix(value).detach() for name, value in style_features.items()}
 
     metadata = {
@@ -191,25 +196,31 @@ def main() -> None:
             content_batch = batch.to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
+            with torch.no_grad():
+                content_features = loss_network(normalize_batch(content_batch.float()))
+
             with autocast(enabled=args.mixed_precision and device.type == "cuda"):
-                with torch.no_grad():
-                    content_features = loss_network(normalize_batch(content_batch))
-
                 stylized_batch = model(content_batch)
-                stylized_features = loss_network(normalize_batch(stylized_batch))
 
-                content_loss = mse_loss(
-                    stylized_features["relu3_3"], content_features["relu3_3"]
-                ) * args.content_weight
+            # Keep perceptual losses in float32. AMP on VGG features / Gram matrix
+            # can be numerically unstable and collapse outputs to black images.
+            stylized_batch_for_loss = stylized_batch.float()
+            stylized_features = loss_network(normalize_batch(stylized_batch_for_loss))
 
-                style_loss = torch.zeros((), device=device)
-                for name, features in stylized_features.items():
-                    target = style_grams[name].expand(content_batch.size(0), -1, -1)
-                    style_loss = style_loss + mse_loss(gram_matrix(features), target)
-                style_loss = style_loss * args.style_weight
+            content_loss = mse_loss(
+                stylized_features["relu3_3"], content_features["relu3_3"]
+            ) * args.content_weight
 
-                tv_loss = total_variation_loss(stylized_batch) * args.tv_weight
-                total_loss = content_loss + style_loss + tv_loss
+            style_loss = torch.zeros((), device=device, dtype=stylized_batch_for_loss.dtype)
+            for name, features in stylized_features.items():
+                target = style_grams[name].expand(content_batch.size(0), -1, -1)
+                style_loss = style_loss + mse_loss(gram_matrix(features), target)
+            style_loss = style_loss * args.style_weight
+
+            tv_loss = total_variation_loss(stylized_batch_for_loss) * args.tv_weight
+            total_loss = content_loss + style_loss + tv_loss
+            ensure_finite("stylized_batch", stylized_batch_for_loss)
+            ensure_finite("total_loss", total_loss)
 
             scaler.scale(total_loss).backward()
             scaler.step(optimizer)

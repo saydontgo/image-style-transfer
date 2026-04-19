@@ -17,13 +17,19 @@ ARCHIVE_SUFFIXES = (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Archive flat checkpoint files under checkpoints/<style>/."
+        description="Archive flat checkpoint files from checkpoints/ into archive/."
     )
     parser.add_argument(
         "--checkpoints-dir",
         type=str,
         default="checkpoints",
         help="Directory containing trained model files to archive.",
+    )
+    parser.add_argument(
+        "--archive-dir",
+        type=str,
+        default="archive",
+        help="Directory used to store archived training runs.",
     )
     parser.add_argument(
         "--dry-run",
@@ -71,7 +77,7 @@ def next_archive_index(style_dir: Path) -> int:
     return max_index + 1
 
 
-def build_archive_plan(checkpoints_dir: Path) -> list[tuple[Path, Path]]:
+def build_archive_plan(checkpoints_dir: Path, archive_dir: Path) -> list[tuple[Path, Path]]:
     files_by_run: dict[str, list[Path]] = defaultdict(list)
     run_styles: dict[str, str] = {}
 
@@ -95,7 +101,7 @@ def build_archive_plan(checkpoints_dir: Path) -> list[tuple[Path, Path]]:
 
     for run_name in sorted(files_by_run):
         style_name = run_styles[run_name]
-        style_dir = checkpoints_dir / style_name
+        style_dir = archive_dir / style_name
         if style_name not in next_indices:
             next_indices[style_name] = next_archive_index(style_dir)
 
@@ -132,6 +138,7 @@ def execute_archive(plan: list[tuple[Path, Path]], dry_run: bool) -> None:
 def main() -> None:
     args = parse_args()
     checkpoints_dir = Path(args.checkpoints_dir)
+    archive_dir = Path(args.archive_dir)
 
     if not checkpoints_dir.exists():
         print(f"Checkpoint directory does not exist: {checkpoints_dir}")
@@ -140,7 +147,7 @@ def main() -> None:
     if not checkpoints_dir.is_dir():
         raise NotADirectoryError(f"Not a directory: {checkpoints_dir}")
 
-    plan = build_archive_plan(checkpoints_dir)
+    plan = build_archive_plan(checkpoints_dir, archive_dir)
     execute_archive(plan, dry_run=args.dry_run)
 
 

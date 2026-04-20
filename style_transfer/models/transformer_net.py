@@ -50,9 +50,12 @@ class UpsampleConvLayer(nn.Module):
         self.upsample = upsample
         self.layer = ConvLayer(in_channels, out_channels, kernel_size, stride)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, output_size: tuple[int, int] | None = None) -> torch.Tensor:
         if self.upsample:
-            x = nn.functional.interpolate(x, mode="nearest", scale_factor=self.upsample)
+            if output_size is not None:
+                x = nn.functional.interpolate(x, mode="nearest", size=output_size)
+            else:
+                x = nn.functional.interpolate(x, mode="nearest", scale_factor=self.upsample)
         return self.layer(x)
 
 
@@ -131,12 +134,12 @@ class TransformerNet(nn.Module):
 
         h = self.residuals(h)
 
-        h = self.upsampling[0](h)
+        h = self.upsampling[0](h, output_size=skip2.shape[-2:])
         h = self.upsampling[1](h)
         h = h + self.skip2_proj(skip2)
         h = self.upsampling[2](h)
 
-        h = self.upsampling[3](h)
+        h = self.upsampling[3](h, output_size=skip1.shape[-2:])
         h = self.upsampling[4](h)
         h = h + self.skip1_proj(skip1)
         h = self.upsampling[5](h)

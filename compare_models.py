@@ -9,7 +9,7 @@ import torch
 from PIL import Image, ImageDraw
 from tqdm import tqdm
 
-from style_transfer.models import TransformerNet
+from style_transfer.models import TransformerNet, load_transformer_state_dict
 from style_transfer.models.checkpoint_compat import extract_compatible_state_dict
 from style_transfer.utils import collect_image_paths, load_image_as_tensor
 
@@ -31,7 +31,7 @@ def load_compatible_model(model_path: str, device: torch.device) -> TransformerN
     checkpoint = torch.load(model_path, map_location=device)
     state_dict = extract_compatible_state_dict(checkpoint)
     model = TransformerNet().to(device)
-    model.load_state_dict(state_dict, strict=True)
+    load_transformer_state_dict(model, state_dict)
     model.eval()
     return model
 

@@ -4,6 +4,13 @@ import torch
 from torch import nn
 
 
+LEGACY_OPTIONAL_STATE_PREFIXES = (
+    "skip2_proj.",
+    "skip1_proj.",
+    "detail_head.",
+)
+
+
 class ConvLayer(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int):
         super().__init__()
@@ -86,11 +93,74 @@ class TransformerNet(nn.Module):
             nn.ReLU(inplace=True),
             ConvLayer(32, 3, kernel_size=9, stride=1),
         )
+        self.skip2_proj = nn.Conv2d(64, 64, kernel_size=1, stride=1)
+        self.skip1_proj = nn.Conv2d(32, 32, kernel_size=1, stride=1)
+        self.detail_head = nn.Sequential(
+            ConvLayer(32 + 32 + 3, 32, kernel_size=3, stride=1),
+            nn.ReLU(inplace=True),
+            ConvLayer(32, 16, kernel_size=3, stride=1),
+            nn.ReLU(inplace=True),
+            ConvLayer(16, 3, kernel_size=3, stride=1),
+        )
+        self._initialize_detail_path()
+
+    def _initialize_detail_path(self) -> None:
+        # Start as the original Johnson network when loading old checkpoints.
+        nn.init.zeros_(self.skip2_proj.weight)
+        nn.init.zeros_(self.skip2_proj.bias)
+        nn.init.zeros_(self.skip1_proj.weight)
+        nn.init.zeros_(self.skip1_proj.bias)
+        final_conv = self.detail_head[-1].conv2d
+        nn.init.zeros_(final_conv.weight)
+        nn.init.zeros_(final_conv.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.downsampling(x)
-        x = self.residuals(x)
-        x = self.upsampling(x)
+        h = self.downsampling[0](x)
+        h = self.downsampling[1](h)
+        h = self.downsampling[2](h)
+        skip1 = h
+
+        h = self.downsampling[3](h)
+        h = self.downsampling[4](h)
+        h = self.downsampling[5](h)
+        skip2 = h
+
+        h = self.downsampling[6](h)
+        h = self.downsampling[7](h)
+        h = self.downsampling[8](h)
+
+        h = self.residuals(h)
+
+        h = self.upsampling[0](h)
+        h = self.upsampling[1](h)
+        h = h + self.skip2_proj(skip2)
+        h = self.upsampling[2](h)
+
+        h = self.upsampling[3](h)
+        h = self.upsampling[4](h)
+        h = h + self.skip1_proj(skip1)
+        h = self.upsampling[5](h)
+
+        base_output = self.upsampling[6](h)
+        detail_input = torch.cat([h, skip1, x], dim=1)
+        detail_residual = self.detail_head(detail_input)
+        x = base_output + detail_residual
         # Keep training-time gradients intact. Output range is clipped only when
         # saving images for preview/inference.
         return x
+
+
+def load_transformer_state_dict(model: TransformerNet, state_dict: dict[str, torch.Tensor]) -> None:
+    incompatible = model.load_state_dict(state_dict, strict=False)
+    disallowed_missing = [
+        key
+        for key in incompatible.missing_keys
+        if not key.startswith(LEGACY_OPTIONAL_STATE_PREFIXES)
+    ]
+    if disallowed_missing or incompatible.unexpected_keys:
+        problems: list[str] = []
+        if disallowed_missing:
+            problems.append(f"missing keys: {', '.join(disallowed_missing[:10])}")
+        if incompatible.unexpected_keys:
+            problems.append(f"unexpected keys: {', '.join(incompatible.unexpected_keys[:10])}")
+        raise RuntimeError("Checkpoint is incompatible with the current TransformerNet layout: " + "; ".join(problems))

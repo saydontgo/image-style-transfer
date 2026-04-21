@@ -6,7 +6,9 @@ from torch import nn
 
 LEGACY_OPTIONAL_STATE_PREFIXES = (
     "skip2_proj.",
+    "skip2_gate.",
     "skip1_proj.",
+    "skip1_gate.",
     "detail_head.",
 )
 
@@ -97,7 +99,19 @@ class TransformerNet(nn.Module):
             ConvLayer(32, 3, kernel_size=9, stride=1),
         )
         self.skip2_proj = nn.Conv2d(64, 64, kernel_size=1, stride=1)
+        self.skip2_gate = nn.Sequential(
+            nn.Conv2d(64 + 64, 64, kernel_size=1, stride=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=1, stride=1),
+            nn.Sigmoid(),
+        )
         self.skip1_proj = nn.Conv2d(32, 32, kernel_size=1, stride=1)
+        self.skip1_gate = nn.Sequential(
+            nn.Conv2d(32 + 32, 32, kernel_size=1, stride=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=1, stride=1),
+            nn.Sigmoid(),
+        )
         self.detail_head = nn.Sequential(
             ConvLayer(32 + 32 + 3, 32, kernel_size=3, stride=1),
             nn.ReLU(inplace=True),
@@ -111,11 +125,28 @@ class TransformerNet(nn.Module):
         # Start as the original Johnson network when loading old checkpoints.
         nn.init.zeros_(self.skip2_proj.weight)
         nn.init.zeros_(self.skip2_proj.bias)
+        nn.init.zeros_(self.skip2_gate[0].weight)
+        nn.init.zeros_(self.skip2_gate[0].bias)
+        nn.init.zeros_(self.skip2_gate[2].weight)
+        nn.init.constant_(self.skip2_gate[2].bias, -2.0)
         nn.init.zeros_(self.skip1_proj.weight)
         nn.init.zeros_(self.skip1_proj.bias)
+        nn.init.zeros_(self.skip1_gate[0].weight)
+        nn.init.zeros_(self.skip1_gate[0].bias)
+        nn.init.zeros_(self.skip1_gate[2].weight)
+        nn.init.constant_(self.skip1_gate[2].bias, -2.0)
         final_conv = self.detail_head[-1].conv2d
         nn.init.zeros_(final_conv.weight)
         nn.init.zeros_(final_conv.bias)
+
+    def _compute_edge_mask(self, x: torch.Tensor) -> torch.Tensor:
+        luminance = (
+            0.299 * x[:, 0:1] + 0.587 * x[:, 1:2] + 0.114 * x[:, 2:3]
+        ) / 255.0
+        diff_x = nn.functional.pad((luminance[:, :, :, 1:] - luminance[:, :, :, :-1]).abs(), (0, 1, 0, 0))
+        diff_y = nn.functional.pad((luminance[:, :, 1:, :] - luminance[:, :, :-1, :]).abs(), (0, 0, 0, 1))
+        edge_mask = (diff_x + diff_y) * 4.0
+        return edge_mask.clamp_(0.0, 1.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         h = self.downsampling[0](x)
@@ -136,17 +167,21 @@ class TransformerNet(nn.Module):
 
         h = self.upsampling[0](h, output_size=skip2.shape[-2:])
         h = self.upsampling[1](h)
-        h = h + self.skip2_proj(skip2)
+        skip2_features = self.skip2_proj(skip2)
+        skip2_gate = self.skip2_gate(torch.cat([h, skip2_features], dim=1))
+        h = h + skip2_gate * skip2_features
         h = self.upsampling[2](h)
 
         h = self.upsampling[3](h, output_size=skip1.shape[-2:])
         h = self.upsampling[4](h)
-        h = h + self.skip1_proj(skip1)
+        skip1_features = self.skip1_proj(skip1)
+        skip1_gate = self.skip1_gate(torch.cat([h, skip1_features], dim=1))
+        h = h + skip1_gate * skip1_features
         h = self.upsampling[5](h)
 
         base_output = self.upsampling[6](h)
         detail_input = torch.cat([h, skip1, x], dim=1)
-        detail_residual = self.detail_head(detail_input)
+        detail_residual = self.detail_head(detail_input) * self._compute_edge_mask(x)
         x = base_output + detail_residual
         # Keep training-time gradients intact. Output range is clipped only when
         # saving images for preview/inference.

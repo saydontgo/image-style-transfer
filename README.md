@@ -9,11 +9,7 @@
 
 ## 1. 方法选择
 
-项目采用 `Johnson et al., Perceptual Losses for Real-Time Style Transfer` 的快速风格迁移方案：
-
-- 优点：训练完成后推理很快，适合课程作业展示。
-- 缺点：一个模型通常只对应一种风格，所以如果要两种风格，通常训练两个模型。
-- 公平对比方式：下载相同架构的公开 `.pth` 权重，用同一批内容图和尽量相同的数据集设置比较。
+项目采用 `Johnson et al., Perceptual Losses for Real-Time Style Transfer` 的快速风格迁移方案
 
 ## 2. 项目结构
 
@@ -39,8 +35,6 @@ image-style-transfer/
 ```
 
 ## 3. 数据准备
-
-推荐使用：
 
 - 内容数据集：`MS-COCO 2014 train` 或 `MS-COCO 2017 train`
 - 风格图：任选两张艺术作品，例如 `mosaic.jpg`、`candy.jpg`、`rain_princess.jpg`
@@ -70,9 +64,9 @@ data/
   - 这是最常见的 Johnson 快速风格迁移实现来源。
 - `gordicaleksa/pytorch-neural-style-transfer-johnson`
   - GitHub: <https://github.com/gordicaleksa/pytorch-neural-style-transfer-johnson>
-  - 仓库提供 MS-COCO 训练说明与预训练模型下载脚本，适合做课程对比实验。
+  - 仓库提供 MS-COCO 训练说明与预训练模型下载脚本。
 
-建议你优先下载以下风格的 `.pth` 权重到 `external_models/`：
+建议优先下载以下风格的 `.pth` 权重到 `external_models/`：
 
 - `mosaic.pth`
 - `candy.pth`

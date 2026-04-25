@@ -28,10 +28,9 @@ image-style-transfer/
 ├── outputs/
 ├── external_models/
 ├── data/
-│   ├── content_examples/
-│   └── style_images/
-└── docs/
-    └── report_template.md
+    ├── content_examples/
+    └── style_images/
+
 ```
 
 ## 3. 数据准备

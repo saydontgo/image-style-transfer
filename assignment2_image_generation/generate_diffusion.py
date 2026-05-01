@@ -82,9 +82,12 @@ def resize_long_side(image: Image.Image, long_side: int) -> Image.Image:
 def load_pipeline(model_id: str, device: torch.device):
     try:
         from diffusers import AutoPipelineForImage2Image
-    except ImportError as error:
-        raise ImportError(
-            "diffusers is not installed. Run: pip install diffusers transformers accelerate safetensors"
+    except Exception as error:
+        raise RuntimeError(
+            "Failed to import diffusers image-to-image pipeline. "
+            "This is usually caused by incompatible versions of torch / transformers / diffusers. "
+            "Recommended fix: install torch first from the official PyTorch command for your CUDA setup, "
+            "then run `pip install -r assignment2_image_generation/requirements.txt`."
         ) from error
 
     dtype = torch.float16 if device.type == "cuda" else torch.float32

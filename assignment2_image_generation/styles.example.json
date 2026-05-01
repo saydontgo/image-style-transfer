@@ -1,0 +1,16 @@
+{
+  "oil_painting": {
+    "prompt": "Turn the photo into an expressive oil painting with visible brush strokes, rich color layering, museum-quality composition",
+    "negative_prompt": "blurry, distorted face, extra fingers, text, watermark, low quality",
+    "strength": 0.6,
+    "guidance_scale": 7.5,
+    "num_inference_steps": 30
+  },
+  "anime_illustration": {
+    "prompt": "Transform the photo into a clean anime illustration, cel shading, colorful lighting, detailed line art, polished background",
+    "negative_prompt": "photorealistic, blurry, noisy, text, watermark, low quality",
+    "strength": 0.7,
+    "guidance_scale": 8.0,
+    "num_inference_steps": 35
+  }
+}
